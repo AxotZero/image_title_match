@@ -1,0 +1,46 @@
+{
+    "name": "PetPoc",
+    "n_gpu": 1,
+    "arch": {
+        "type": "MyVisualBertNlvr2",
+        "args": {
+            "bert_path": "../pretrain_model/model/bert-base-chinese",
+            "vbert_path": "../pretrain_model/model/visualbert-nlvr2-coco-pre"
+        }
+    },
+    "data_loader": {
+        "type": "MyDataLoader",
+        "args": {
+            "raw_data_dir": "../contest_data/train",
+            "tokenizer_path": "../pretrain_model/tokenizer/bert-base-chinese",
+            "length": -1,
+            "batch_size": 32,
+            "shuffle": true,
+            "validation_split": 0.1,
+            "num_workers": 8,
+            "fold_idx": 0
+        }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args": {
+            "lr": 5e-5,
+            "weight_decay": 1e-07
+        }
+    },
+    "loss": "binary_loss",
+    "metrics": [
+        "attr_acc",
+        "global_acc",
+        "global_f1"
+    ],
+    "trainer": {
+        "epochs": 1,
+        "save_dir": "../save_dir/visual_rep_all//fold0",
+        "save_period": 1,
+        "verbosity": 2,
+        "monitor": "min val_loss",
+        "early_stop": 10,
+        "tensorboard": false
+    }
+}
