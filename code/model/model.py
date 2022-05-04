@@ -7,19 +7,127 @@ import torch.nn.functional as F
 from transformers import AutoModel
 
 from base import BaseModel
-from process_data import load_json
-
+from process_data import load_json, load_attr
 
 # class MyVisualBertDropout(BaseModel):
 
 
-class MyVisualBertNlvr2(BaseModel):
-    def __init__(self, bert_path='', vbert_path=''):
+# class BertBaseWithVisual(BaseModel):
+#     def __init__(self, bert_path='', attr_path=''):
+#         super().__init__()
+
+#         self.img_hidden_size = 768
+#         self.img_encoder = nn.Linear(2048, 13*self.img_hidden_size)
+#         self.img_classifiers = nn.ModuleList([
+#             nn.Linear(self.img_hidden_size, num_classes)
+#             for num_classes in attr_config['attr_num_classes'].values()
+#         ])
+
+#         self.text_encoder = AutoModel.from_pretrained(bert_path)
+    
+#     def forward(self, x):
+#         if len(x) == 2:
+#             text_ids, img_feature = x
+#             text_mask = None
+#         else:
+#             text_ids, text_mask, img_feature = x
+        
+class VisualBertFromBertBaseChinese(nn.Module):
+    def __init__(self, bert_path='', vbert_path='', n_split=2, num_layer=12, **kwargs):
         super().__init__()
+        self.n_split = n_split
+        bert = AutoModel.from_pretrained(bert_path)
+        self.visual_bert = AutoModel.from_pretrained(vbert_path)
+        self.visual_bert.embeddings.word_embeddings = bert.embeddings.word_embeddings
+        self.visual_bert.encoder.layer = bert.encoder.layer[:num_layer]
+
+        self.img_encoder = nn.Linear(
+            nn.Dropout(0.2),
+            nn.Linear(2048, n_split*1024)
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Linear(768, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        if len(x) == 2:
+            text_ids, img_feature = x
+            text_mask = None
+        else:
+            text_ids, text_mask, img_feature = x
+
+        img_feature = self.img_encoder(img_feature)
+
+        emb = self.visual_bert(
+            input_ids=text_ids,
+            attention_mask=text_mask,
+            visual_embeds=img_feature.view(-1, self.n_split, 1024)
+        )[1]
+        return self.classifier(emb).squeeze()
+
+
+class ImageEnhanceVBert(BaseModel):
+    def __init__(self, bert_path='', vbert_path='', attr_path=''):
+        super().__init__()
+
+        attr_config = load_attr(attr_path)
+
         self.text_encoder = AutoModel.from_pretrained(bert_path)
         self.visual_bert = AutoModel.from_pretrained(vbert_path)
 
-        self.img_encoder = nn.Linear(2048, 2048)
+        self.img_encoder = nn.Linear(2048, 13*1024)
+
+        self.img_classifiers = nn.ModuleList([
+            nn.Linear(1024, num_classes)
+            for num_classes in attr_config['attr_num_classes'].values()
+        ])
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(768, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        # parse data
+        if len(x) == 2:
+            text_ids, img_feature = x
+            text_mask = None
+        else:
+            text_ids, text_mask, img_feature = x
+
+        # encode text
+        text_emb = self.text_encoder(text_ids, text_mask)[0]
+        
+        # encode img
+        img_feature = self.img_encoder(img_feature).view(-1, 13, 1024)
+
+        # classify img class
+        attr_outputs = [m(img_feature[:, i]) for i, m in enumerate(self.img_classifiers)]
+
+
+        # classify is match
+        emb = self.visual_bert(
+            inputs_embeds=text_emb,
+            attention_mask=text_mask,
+            visual_embeds=img_feature
+        )[1]
+        return self.classifier(emb).squeeze(), attr_outputs
+
+
+class MyVisualBertNlvr2(BaseModel):
+    def __init__(self, bert_path='', vbert_path='', n_split=2, bert_num_layer=12, vbert_num_layer=12, **kwargs):
+        super().__init__()
+        self.n_split = n_split
+        self.text_encoder = AutoModel.from_pretrained(bert_path)
+        self.text_encoder.encoder.layer = self.text_encoder.encoder.layer[:bert_num_layer]
+
+
+        self.visual_bert = AutoModel.from_pretrained(vbert_path)
+        self.visual_bert.encoder.layer = self.visual_bert.encoder.layer[:vbert_num_layer]
+
+        self.img_encoder = nn.Linear(2048, n_split*1024)
 
         self.classifier = nn.Sequential(
             nn.Linear(768, 1),
@@ -40,7 +148,7 @@ class MyVisualBertNlvr2(BaseModel):
             inputs_embeds=text_emb,
             attention_mask=text_mask,
             # visual_embeds=img_feature.unsqueeze(1)
-            visual_embeds=img_feature.view(-1, 2, 1024)
+            visual_embeds=img_feature.view(-1, self.n_split, 1024)
         )[1]
         return self.classifier(emb).squeeze()
 
@@ -64,7 +172,6 @@ class MyVisualBert(BaseModel):
             text_ids, text_mask, img_feature = x
 
         text_emb = self.text_encoder(text_ids, text_mask)[0]
-        img_feature = self.img_encoder
 
         emb = self.visual_bert(
             inputs_embeds=text_emb,
@@ -72,7 +179,6 @@ class MyVisualBert(BaseModel):
             visual_embeds=img_feature.unsqueeze(1)
         )[1]
         return self.classifier(emb).squeeze()
-
 
 
 class QueryModel(BaseModel):
@@ -234,6 +340,8 @@ class ImageClassifierD3(BaseModel):
 
         # embs_logits
         self.text_model = AutoModel.from_pretrained(text_model_name)
+        for param in self.text_model.parameters():
+            param.requires_grad = False
 
         self.img_encoder = nn.Sequential(
             nn.Dropout(0.2),

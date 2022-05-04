@@ -29,3 +29,7 @@ class BaseModel(nn.Module):
         super().to(device, *args, **kwargs)
         self.device = device
         return self
+
+    
+    def predict(self, x):
+        return self.forward(x)

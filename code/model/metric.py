@@ -15,8 +15,28 @@ def binary_acc(output, target):
     return torch.mean((target == (output > THRESHOLD).float()).float())
 
 
+def global_acc2(output, target):
+    output, _ = output
+
+    global_mask, _, match, *_ = target
+
+    output = output[global_mask]
+    match = match[global_mask]
+
+    return binary_acc(output, match)
+
+def attr_acc2(output, target):
+    output, _ = output
+    _, attr_mask, match, *_ = target
+
+    output = output[attr_mask]
+    match = match[attr_mask]
+
+    return binary_acc(output, match)
+
+
 def attr_acc(output, target):
-    _, attr_mask, match = target
+    _, attr_mask, match, *_ = target
 
     output = output[attr_mask]
     match = match[attr_mask]
@@ -25,7 +45,7 @@ def attr_acc(output, target):
 
 
 def global_acc(output, target):
-    global_mask, _, match = target
+    global_mask, _, match, *_ = target
 
     output = output[global_mask]
     match = match[global_mask]

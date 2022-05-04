@@ -94,7 +94,7 @@ if __name__ == '__main__':
     print('run testing')
     test_output = []
     with torch.no_grad():
-        for i, data in enumerate(tqdm(test_data)):
+        for i, data in enumerate(test_data):
             title_ids = torch.tensor(
                 tokenizer.encode(data['title'])).to(device)
             img_feature = torch.tensor(data['feature']).to(device)
@@ -111,7 +111,7 @@ if __name__ == '__main__':
                         title_ids = torch.tensor(tokenizer.encode(
                             attrval)).to(device).unsqueeze(0)
                         have_attrval = True
-                        pred = model((title_ids, img_feature))
+                        pred = model.predict((title_ids, img_feature))
                         match[q] = float(pred.squeeze().cpu().detach())
                 if not have_attrval:
                     match[q] = 0

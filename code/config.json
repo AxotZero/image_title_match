@@ -1,11 +1,13 @@
 {
     "name": "PetPoc",
-    "n_gpu": 1,
+    "n_gpu": 4,
     "arch": {
-        "type": "MyVisualBertNlvr2",
+        "type": "VisualBertFromBertBaseChinese",
         "args": {
             "bert_path": "../pretrain_model/model/bert-base-chinese",
-            "vbert_path": "../pretrain_model/model/visualbert-nlvr2-coco-pre"
+            "vbert_path": "../pretrain_model/model/visualbert-nlvr2-coco-pre",
+            "n_split": 4,
+            "num_layer": 8
         }
     },
     "data_loader": {
@@ -13,11 +15,12 @@
         "args": {
             "raw_data_dir": "../contest_data/train",
             "tokenizer_path": "../pretrain_model/tokenizer/bert-base-chinese",
-            "length": -1,
+            "length": 1000,
+            "run_jieba": true,
             "batch_size": 32,
             "shuffle": true,
             "validation_split": 0.1,
-            "num_workers": 8,
+            "num_workers": 0,
             "fold_idx": 0
         }
     },
@@ -31,8 +34,7 @@
     "loss": "binary_loss",
     "metrics": [
         "attr_acc",
-        "global_acc",
-        "global_f1"
+        "global_acc"
     ],
     "trainer": {
         "epochs": 1,

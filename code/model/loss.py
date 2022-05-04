@@ -12,6 +12,18 @@ def binary_loss(output, target):
     return 0.5 * global_loss + 0.5 * attr_loss
 
 
+def attr_w_binary_loss(output, target):
+    match_pred, attrs_pred = output
+    global_binary_mask, attr_binary_mask, match, attrs_match_mask, attrs_label = target
+
+    # match_loss = binary_loss(match_pred, (global_binary_loss, attr_binary_loss, match))
+    global_loss = bce_loss(match_pred[global_binary_mask], match[global_binary_mask])
+    attr_loss = bce_loss(match_pred[attr_binary_mask], match[attr_binary_mask])
+    enhance_loss = attr_classify_loss(attrs_pred, attrs_match_mask, attrs_label)
+
+    return 0.5 * global_loss + 0.3 * attr_loss + 0.2 * enhance_loss
+
+
 def global_binary_loss(output, target):
     global_mask, attr_mask, match = target
     global_loss = bce_loss(output[global_mask], match[global_mask])
@@ -31,7 +43,7 @@ def sim_loss(embs_logits):
     return (loss1 + loss2) / 2
 
 
-def attr_loss(attrs_pred, attrs_mask, target):
+def attr_classify_loss(attrs_pred, attrs_mask, target):
     losses = torch.cat(
         [
             F.cross_entropy(
