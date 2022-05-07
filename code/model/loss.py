@@ -44,6 +44,7 @@ def sim_loss(embs_logits):
 
 
 def attr_classify_loss(attrs_pred, attrs_mask, target):
+    # bp()
     losses = torch.cat(
         [
             F.cross_entropy(

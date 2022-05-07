@@ -85,6 +85,12 @@ if __name__ == '__main__':
 
     # build model 
     print('build model')
+    pretrain_dir='/home/mw/input/pretrain_model_5238/pretrain_model'
+    bert_path=f'{pretrain_dir}/model/bert-base-chinese'
+    vbert_path=f'{pretrain_dir}/model/visualbert-nlvr2-coco-pre'
+    config['arch']['args']['bert_path'] = bert_path
+    config['arch']['args']['vbert_path'] = vbert_path
+
     model = config.init_obj('arch', module_arch)
     model.load_state_dict(checkpoint['state_dict'])
     model = model.to(device)
@@ -101,7 +107,7 @@ if __name__ == '__main__':
 
             title_ids = title_ids.long().unsqueeze(0)
             img_feature = img_feature.float().unsqueeze(0)
-            global_match = model((title_ids, img_feature))
+            global_match = model.predict((title_ids, img_feature))
 
             match = {'图文': float(global_match.squeeze().cpu().detach())}
             for q, idx in data['query_map'].items():

@@ -31,20 +31,139 @@ from process_data import load_json, load_attr
 #             text_mask = None
 #         else:
 #             text_ids, text_mask, img_feature = x
-        
-class VisualBertFromBertBaseChinese(nn.Module):
-    def __init__(self, bert_path='', vbert_path='', n_split=2, num_layer=12, **kwargs):
+
+
+class SplitBySlidingWindow(BaseModel):
+    def __init__(self, bert_path='', vbert_path='', n_split=2, num_layer=12, num_loop=1, **kwargs):
         super().__init__()
         self.n_split = n_split
         bert = AutoModel.from_pretrained(bert_path)
         self.visual_bert = AutoModel.from_pretrained(vbert_path)
         self.visual_bert.embeddings.word_embeddings = bert.embeddings.word_embeddings
-        self.visual_bert.encoder.layer = bert.encoder.layer[:num_layer]
-
-        self.img_encoder = nn.Linear(
-            nn.Dropout(0.2),
-            nn.Linear(2048, n_split*1024)
+        self.visual_bert.encoder.layer = nn.ModuleList(
+            [bert.encoder.layer[0], bert.encoder.layer[1]] +
+            [bert.encoder.layer[i%num_layer+2] for i in range(num_layer*num_loop)]
         )
+
+        self.img_dropout = nn.Dropout(0.2)
+
+        self.n_split = n_split
+
+        self.classifier = nn.Sequential(
+            nn.Linear(768, 1),
+            nn.Sigmoid()
+        )
+
+
+    def forward(self, x):
+        if len(x) == 2:
+            text_ids, img_feature = x
+            text_mask = None
+        else:
+            text_ids, text_mask, img_feature = x
+
+        img_feature = self.img_dropout(img_feature)
+
+
+        emb = self.visual_bert(
+            input_ids=text_ids,
+            attention_mask=text_mask,
+            visual_embeds=img_feature.unfold(1, 1024, int(2048/self.n_split))
+        )[1]
+        return self.classifier(emb).squeeze()
+
+
+
+class ImageEnhanceVisualBertFromBertBaseChinese(BaseModel):
+    def __init__(self, 
+                 bert_path='', vbert_path='', attr_path='', 
+                 num_layer=8, num_loop=1, 
+                 img_dropout=0.2, img_num_layer=1):
+        super().__init__()
+        attr_config = load_attr(attr_path)
+
+        bert = AutoModel.from_pretrained(bert_path)
+        self.visual_bert = AutoModel.from_pretrained(vbert_path)
+        self.visual_bert.embeddings.word_embeddings = bert.embeddings.word_embeddings
+        self.visual_bert.encoder.layer = nn.ModuleList([
+            bert.encoder.layer[i%num_layer]
+            for i in range(num_layer*num_loop)
+        ])
+        self.visual_bert.config.num_hidden_layers = num_layer*num_loop
+
+        self.img_encoder = nn.Sequential(
+            nn.Dropout(img_dropout),
+            nn.utils.weight_norm(nn.Linear(2048, 13*1024))
+        )
+
+        self.img_classifiers = nn.ModuleList([
+            nn.Linear(1024, num_classes)
+            for num_classes in attr_config['attr_num_classes'].values()
+        ])
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(768, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        # parse data
+        if len(x) == 2:
+            text_ids, img_feature = x
+            text_mask = None
+            visual_mask = None
+
+        elif len(x) == 3:
+            text_ids, text_mask, img_feature = x
+            visual_mask = None
+        
+        else:
+            text_ids, text_mask, img_feature, visual_mask = x
+
+
+        # encode img
+        img_feature = self.img_encoder(img_feature).view(-1, 13, 1024)
+
+        # classify img class
+        attr_outputs = [m(img_feature[:, i]) for i, m in enumerate(self.img_classifiers)]
+
+
+        # classify is match
+        emb = self.visual_bert(
+            input_ids=text_ids,
+            attention_mask=text_mask,
+            visual_embeds=img_feature,
+            visual_attention_mask=visual_mask
+        )[1]
+        return self.classifier(emb).squeeze(), attr_outputs
+
+
+    def predict(self, x):
+        return self.forward(x)[0]
+
+
+class VisualBertFromBertBaseChinese(BaseModel):
+    def __init__(self, bert_path='', vbert_path='', n_split=2, num_layer=12, num_loop=1, img_dropout=0.2, **kwargs):
+        super().__init__()
+        self.n_split = n_split
+        bert = AutoModel.from_pretrained(bert_path)
+        self.visual_bert = AutoModel.from_pretrained(vbert_path)
+        self.visual_bert.embeddings.word_embeddings = bert.embeddings.word_embeddings
+        self.visual_bert.encoder.layer = nn.ModuleList([
+            bert.encoder.layer[i%num_layer]
+            for i in range(num_layer*num_loop)
+        ])
+        self.visual_bert.config.num_hidden_layers = num_layer*num_loop
+
+        self.img_encoder = nn.Sequential(
+            nn.Dropout(img_dropout),
+            nn.utils.weight_norm(nn.Linear(2048, n_split*1024))
+        )
+
+        self.img_classifiers = nn.ModuleList([
+            nn.Linear(1024, num_classes)
+            for num_classes in attr_config['attr_num_classes'].values()
+        ])
 
         self.classifier = nn.Sequential(
             nn.Linear(768, 1),
@@ -58,12 +177,13 @@ class VisualBertFromBertBaseChinese(nn.Module):
         else:
             text_ids, text_mask, img_feature = x
 
-        img_feature = self.img_encoder(img_feature)
+        img_feature = self.img_encoder(img_feature).view(-1, self.n_split, 1024)
+        attr_outputs = [m(img_feature[:, i]) for i, m in enumerate(self.img_classifiers)]
 
         emb = self.visual_bert(
             input_ids=text_ids,
             attention_mask=text_mask,
-            visual_embeds=img_feature.view(-1, self.n_split, 1024)
+            visual_embeds=img_feature
         )[1]
         return self.classifier(emb).squeeze()
 
