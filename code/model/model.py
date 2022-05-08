@@ -114,11 +114,11 @@ class ImageEnhanceVisualBertFromBertBaseChinese(BaseModel):
             visual_mask = None
 
         elif len(x) == 3:
-            text_ids, text_mask, img_feature = x
-            visual_mask = None
+            text_ids, img_feature, visual_mask = x
+            text_mask = None
         
-        else:
-            text_ids, text_mask, img_feature, visual_mask = x
+        # else:
+        #     text_ids, text_mask, img_feature, visual_mask = x
 
 
         # encode img

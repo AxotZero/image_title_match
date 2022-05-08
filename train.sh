@@ -17,8 +17,8 @@ tokenizer_path=$pretrain_dir/tokenizer/bert-base-chinese
 # train setting
 config_path='./config.json'
 # save_dir='../best_model/'
-# resume_path='../data/model_data/not_that_hard__split_by_window/best_model.pth'
-save_dir='../data/model_data/img_enhance_vbert_layer8_loop3'
+# resume_path='../data/model_data/img_enhance_vbert_layer8_loop3/best_model.pth'
+save_dir='../data/model_data/img_enhance_vbert_layer8_loop2_all_data'
 
 # train model
 cd code && python3 train.py \

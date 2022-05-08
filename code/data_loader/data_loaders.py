@@ -324,6 +324,7 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
         attr_masks = []
         attr_classify_masks = []
         attr_classify_labels = []
+        visual_masks = []
 
         for d in data:
             for title_ids in d['text_ids']:
@@ -334,6 +335,7 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
             attr_masks += d['attr_mask']
             attr_classify_masks += d['attr_classify_mask']
             attr_classify_labels += d['attr_classify_label']
+            visual_masks += d['visual_mask']
 
         titles_ids = nn.utils.rnn.pad_sequence(
             titles_ids, batch_first=True, padding_value=0)
@@ -343,9 +345,10 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
         attr_masks = torch.tensor(attr_masks)
         attr_classify_masks = torch.tensor(attr_classify_masks)
         attr_classify_labels = torch.tensor(attr_classify_labels)
+        visual_masks = torch.tensor(visual_masks)
 
         return (
-            (titles_ids.long(), features.float()),
+            (titles_ids.long(), features.float(), visual_masks.bool()),
             (global_masks.bool(), attr_masks.bool(), matches.float(), attr_classify_masks.bool(), attr_classify_labels.long())
         )
 
@@ -429,11 +432,13 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
                 'global_mask': [],
                 'attr_mask': [],
                 'attr_classify_mask': [],
-                'attr_classify_label': []
+                'attr_classify_label': [],
+                'visual_mask': []
             }
 
             base_attr_classify_mask = [0] * 12
             base_attr_classify_label = [-1] * 12
+            # base_visual_mask = []
 
             # mismatch attrvals
             neg_attrvals = copy.deepcopy(attr_config['attrvals'])
@@ -456,6 +461,7 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
                     attr_classify_label[attr_id_map[attr]] = label_idx
             ret['attr_classify_label'].append(attr_classify_label)
             ret['attr_classify_mask'].append(attr_classify_mask)
+            ret['visual_mask'].append([1] * 13)
 
             # run jieba data aug
             if self.training and self.run_jieba and given_prob(0.3):
@@ -478,7 +484,6 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
                         text = self.replace_attr(text, attr, attrval)
                         
                         
-            
             # update global match rate
             if self.training:
                 self.global_match0 += (match == 0)
@@ -517,6 +522,10 @@ class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
                     ret['text_ids'].append(self.tokenizer.encode(text))
                     ret['attr_classify_label'].append(deepcopy(base_attr_classify_label))
                     ret['attr_classify_mask'].append(deepcopy(base_attr_classify_mask))
+
+                    visual_mask = [0] * 13
+                    visual_mask[attr_id_map[k]] = 1
+                    ret['visual_mask'].append(visual_mask)
 
             return ret
 

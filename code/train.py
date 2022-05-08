@@ -35,7 +35,7 @@ def main(config):
 
     # setup data_loader instances
     data_loader = config.init_obj('data_loader', module_data)
-    valid_data_loader = data_loader.split_validation()
+    # valid_data_loader = data_loader.split_validation()
     # valid_data_loader.dataset.training = False
 
     # prepare for (multi-device) GPU training
@@ -57,7 +57,7 @@ def main(config):
                        device=device,
                        device_ids=device_ids,
                        data_loader=data_loader,
-                       valid_data_loader=valid_data_loader,
+                       valid_data_loader=None,
                        lr_scheduler=lr_scheduler)
 
     trainer.train()
