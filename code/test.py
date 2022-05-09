@@ -61,6 +61,10 @@ if __name__ == '__main__':
                       help='text_model_name')
     args.add_argument('--attr_path', type=str, default='../data/contest_data/attr_to_attrvals.json',
                       help='path to attr_to_attrvals.json')
+    args.add_argument('--mask_attr', action='store_true',
+                      help='create visual_mask for attr')
+    args.add_argument('--mask_global', action='store_true',
+                      help='create visual_mask for global')
 
     args = args.parse_args()
 
@@ -109,7 +113,16 @@ if __name__ == '__main__':
 
             title_ids = title_ids.long().unsqueeze(0)
             img_feature = img_feature.float().unsqueeze(0)
-            global_match = model.predict((title_ids, img_feature))
+            
+            if args.mask_global:
+                visual_mask = [0] * 13
+                for attr in data['key_attr'].keys():
+                    visual_mask[attr_config['attr_id_map'][attr]] = 1
+                visual_mask[-1] = 1
+                visual_mask = torch.tensor(visual_mask).bool().unsqueeze(0).to(device)
+                global_match = model.predict((title_ids, img_feature, visual_mask))
+            else:
+                global_match = model.predict((title_ids, img_feature))
 
             match = {'图文': float(global_match.squeeze().cpu().detach())}
             for q, idx in data['query_map'].items():
@@ -119,7 +132,17 @@ if __name__ == '__main__':
                         title_ids = torch.tensor(tokenizer.encode(
                             attrval)).to(device).unsqueeze(0)
                         have_attrval = True
-                        pred = model.predict((title_ids, img_feature))
+
+                        # attr visual mask
+                        if args.mask_attr:
+                            visual_mask = [0] * 13
+                            visual_mask[attr_config['attr_id_map'][q]] = 1
+                            visual_mask = torch.tensor(visual_mask).bool().unsqueeze(0).to(device)
+                            # predict
+                            pred = model.predict((title_ids, img_feature, visual_mask))
+                        else:
+                            pred = model.predict((title_ids, img_feature))
+
                         match[q] = float(pred.squeeze().cpu().detach())
                 if not have_attrval:
                     match[q] = 0

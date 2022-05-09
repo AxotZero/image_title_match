@@ -314,6 +314,223 @@ class HardDataLoader(BaseDataLoader):
             collate_fn=self.__class__.batch_collate)
 
 
+class VisualMaskDataLoader(BaseDataLoader):
+    def batch_collate(data):
+        titles_ids = []
+        features = []
+        matches = []
+        global_masks = []
+        attr_masks = []
+        visual_masks = []
+
+        for d in data:
+            for title_ids in d['text_ids']:
+                titles_ids += [torch.tensor(title_ids)]
+            features += d['feature']
+            matches += d['match']
+            global_masks += d['global_mask']
+            attr_masks += d['attr_mask']
+            visual_masks += d['visual_mask']
+
+        titles_ids = nn.utils.rnn.pad_sequence(
+            titles_ids, batch_first=True, padding_value=0)
+        features = torch.tensor(features)
+        matches = torch.tensor(matches)
+        global_masks = torch.tensor(global_masks)
+        attr_masks = torch.tensor(attr_masks)
+        visual_masks = torch.tensor(visual_masks)
+
+        return (
+            (titles_ids.long(), features.float(), visual_masks.bool()),
+            (global_masks.bool(), attr_masks.bool(), matches.float())
+        )
+
+    class InnerDataset(Dataset):
+        def __init__(self, 
+                     raw_data_dir,
+                     tokenizer_path,
+                     run_jieba=False,
+                     mask_attr=True,
+                     mask_global=False,
+                     length=-1):
+            self.attr_config = load_attr(f'{raw_data_dir}/attr_to_attrvals.json')
+
+            fine = preprocess_train_data(
+                length=length,
+                data_path=f'{raw_data_dir}/train_fine.txt', 
+                attr_config=self.attr_config, 
+                is_fine=True
+            )
+            coarse = preprocess_train_data(
+                length=length,
+                data_path=f'{raw_data_dir}/train_coarse.txt', 
+                attr_config=self.attr_config, 
+                is_fine=False
+            )
+
+            self.data = fine + coarse
+                
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+            self.run_jieba = run_jieba
+            add_attrvals_to_jieba(self.attr_config['attrvals'])
+
+            self.training = True
+            self.mask_attr = mask_attr
+            self.mask_global = mask_global
+            self.global_match1 = 1
+            self.global_match0 = 1
+            self.attr_match1 = 1
+            self.attr_match0 = 1
+                
+        def __len__(self):
+            return len(self.data)
+
+        def replace_attr(self, text, attr, attrval):
+            num_classes = self.attr_config['attr_num_classes'][attr]
+            cur_idx = self.attr_config['attrval_id_map'][attr][attrval]
+            add_idx = int(random.uniform(1, num_classes))
+            replace_val = self.attr_config['classid_attrval_map'][attr][(cur_idx+add_idx) % num_classes]
+            return text.replace(attrval, replace_val)
+
+        @property
+        def global_match0_prob(self):
+            return self.global_match1 / (self.global_match0 + self.global_match1)
+
+        @property
+        def attr_match0_prob(self):
+            return self.attr_match1 / (self.attr_match0 + self.attr_match1)
+
+        def __getitem__(self, index):
+            """
+            1. title data aug
+                - 以0.1的機率，將title換成別的title，並將match設為 0
+                - 以0.4的機率，將title 的 attrval 換成別的 attrval， 並將match設為 0
+            2. 若你是 fine ， 每個 attrval of key_attr 有 0.5 的機率會被替換成別的 attrval，並將 match 設為0
+            3. 將 title 與 attrval 都產生 text_ids, 並在 batch 的維度上 align
+            4. 產生 global_mask 跟 attr_mask 
+            5. 產生的 data 的 length = len of (data['match'])，包含
+                - text_ids (title or attr_val): (a list of list(int))
+                - feature (都是同一個feature):   (a list of 2048-dim float, all are the same)
+                - is_match:                     (a list of is_match) 
+                - global_mask                   (where is the 圖文 match)
+                - attr_mask                     (where are attr match)
+            """
+            attr_config = self.attr_config
+            attr_id_map = attr_config['attr_id_map']
+            attrval_id_map = attr_config['attrval_id_map']
+
+            data = self.data[index].copy()
+
+            ret = {
+                'text_ids': [],
+                'feature': [],
+                'match': [],
+                'global_mask': [],
+                'attr_mask': [],
+                'visual_mask': []
+            }
+
+            # mismatch attrvals
+            neg_attrvals = copy.deepcopy(attr_config['attrvals'])
+            for v in data['key_attr'].values():
+                neg_attrvals.remove(v)
+
+            ### global match
+            match = data['match']['图文']
+            text = data['title']
+            
+            # run jieba data aug
+            if self.training and self.run_jieba and given_prob(0.3):
+                words = list(jieba.cut(text))
+                random.shuffle(words)
+                text = ''.join(words)
+
+            # augment global match
+            if self.training:
+                attrs = list(data['key_attr'].keys())
+                if len(attrs) >= 1:
+                    attr = random.choice(attrs)
+                    attrval = data['key_attr'][attr]
+
+                    # generate neg sample
+                    if match and given_prob(self.global_match0_prob):
+                        match = 0
+                        # rand2 = random.uniform(0, 1)
+                        text = self.replace_attr(text, attr, attrval)
+                        
+                        
+            # update global match rate
+            if self.training:
+                self.global_match0 += (match == 0)
+                self.global_match1 += (match == 1)
+            
+            ret['global_mask'].append(1)
+            ret['attr_mask'].append(0)
+            ret['match'].append(match)
+            ret['feature'].append(data['feature'])
+            ret['text_ids'].append(self.tokenizer.encode(text))
+
+            # visual mask
+            if self.mask_global:
+                visual_mask = [0] * 13
+                for attr in data['key_attr'].keys():
+                    visual_mask[attr_id_map[attr]] = 1
+                visual_mask[-1] = 1
+                ret['visual_mask'].append(visual_mask)
+            else:
+                ret['visual_mask'].append([1]*13)
+            
+            ### attr match
+            if data['is_fine'] or self.training:
+                for k, text in data['key_attr'].items():
+                    match = data['match']['图文']
+                    if not data['is_fine'] and match == 0:
+                        continue
+
+                    if self.training and match == 1 and given_prob(self.attr_match0_prob):
+                        match = 0
+
+                        cur_idx = self.attr_config['attrval_id_map'][k][text]
+                        num_classes = attr_config['attr_num_classes'][k]
+                        add_idx = int(random.uniform(1, num_classes))
+                        text = attr_config['classid_attrval_map'][k][(cur_idx+add_idx) % num_classes]
+
+                    if self.training:
+                        self.attr_match0 += (match == 0)
+                        self.attr_match1 += (match == 1)
+
+                    ret['global_mask'].append(0)
+                    ret['attr_mask'].append(1)
+                    ret['match'].append(match)
+                    ret['feature'].append(data['feature'])
+                    ret['text_ids'].append(self.tokenizer.encode(text))
+
+                    # visual mask
+                    if self.mask_attr:
+                        visual_mask = [0] * 13
+                        visual_mask[attr_id_map[k]] = 1
+                        ret['visual_mask'].append(visual_mask)
+                    else:
+                        ret['visual_mask'].append([1]*13)
+
+            return ret
+
+    def __init__(self, raw_data_dir, tokenizer_path, length=-1, run_jieba=False,
+                mask_attr=True, mask_global=False,
+                batch_size=128, shuffle=True, fold_idx=-1, validation_split=0.25, num_workers=1, training=True):
+        self.dataset = self.__class__.InnerDataset(
+            raw_data_dir=raw_data_dir, tokenizer_path=tokenizer_path, length=length, run_jieba=run_jieba, mask_attr=mask_attr, mask_global=mask_global,)
+
+        super().__init__(
+            self.dataset,
+            batch_size,
+            shuffle,
+            fold_idx,
+            validation_split,
+            num_workers,
+            collate_fn=self.__class__.batch_collate)
+
+
 
 class AttrMaskImageEnhanceDataLoader(BaseDataLoader):
     def batch_collate(data):

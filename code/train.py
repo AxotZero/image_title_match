@@ -16,18 +16,27 @@ from ranger import Ranger
 
 
 # fix random seeds for reproducibility
-SEED = 123
-torch.manual_seed(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-# torch.backends.cudnn.enabled = False
-# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-np.random.seed(SEED)
-os.environ['TOKENIZERS_PARALLELISM'] = "false"
+# SEED = 123
+# torch.manual_seed(SEED)
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
+# # torch.backends.cudnn.enabled = False
+# # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+# np.random.seed(SEED)
+# os.environ['TOKENIZERS_PARALLELISM'] = "false"
+
+def set_seed(seed):
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['TOKENIZERS_PARALLELISM'] = "false"
 
 
 def main(config):
     logger = config.get_logger('train')
+
+    set_seed(config['seed'])
 
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch)
@@ -35,8 +44,6 @@ def main(config):
 
     # setup data_loader instances
     data_loader = config.init_obj('data_loader', module_data)
-    # valid_data_loader = data_loader.split_validation()
-    # valid_data_loader.dataset.training = False
 
     # prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config['n_gpu'])

@@ -1,24 +1,24 @@
 
-device=5,4
+device=1
 epochs=10
-batch_size=64
+batch_size=32
 raw_data_dir=../contest_data/testA/train
 pretrain_dir=../pretrain_model
 length=-1
 
-bert_path=$pretrain_dir/model/bert-base-chinese
-vbert_path=$pretrain_dir/model/visualbert-nlvr2-coco-pre
-tokenizer_path=$pretrain_dir/tokenizer/bert-base-chinese
+# bert_path=$pretrain_dir/model/bert-base-chinese
+# vbert_path=$pretrain_dir/model/visualbert-nlvr2-coco-pre
+# tokenizer_path=$pretrain_dir/tokenizer/bert-base-chinese
 
-# bert_path=bert-base-chinese
-# vbert_path=uclanlp/visualbert-nlvr2-coco-pre
-# tokenizer_path=bert-base-chinese
+bert_path=bert-base-chinese
+vbert_path=uclanlp/visualbert-nlvr2-coco-pre
+tokenizer_path=bert-base-chinese
 
 # train setting
 config_path='./config.json'
 # save_dir='../best_model/'
 # resume_path='../data/model_data/img_enhance_vbert_layer8_loop3/best_model.pth'
-save_dir='../data/model_data/img_enhance_vbert_layer8_loop2_all_data'
+save_dir='../data/model_data/visual_mask_all_layer7'
 
 # train model
 cd code && python3 train.py \

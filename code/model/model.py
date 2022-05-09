@@ -160,11 +160,6 @@ class VisualBertFromBertBaseChinese(BaseModel):
             nn.utils.weight_norm(nn.Linear(2048, n_split*1024))
         )
 
-        self.img_classifiers = nn.ModuleList([
-            nn.Linear(1024, num_classes)
-            for num_classes in attr_config['attr_num_classes'].values()
-        ])
-
         self.classifier = nn.Sequential(
             nn.Linear(768, 1),
             nn.Sigmoid()
@@ -174,16 +169,19 @@ class VisualBertFromBertBaseChinese(BaseModel):
         if len(x) == 2:
             text_ids, img_feature = x
             text_mask = None
-        else:
-            text_ids, text_mask, img_feature = x
+            visual_mask = None
+
+        elif len(x) == 3:
+            text_ids, img_feature, visual_mask = x
+            text_mask = None
 
         img_feature = self.img_encoder(img_feature).view(-1, self.n_split, 1024)
-        attr_outputs = [m(img_feature[:, i]) for i, m in enumerate(self.img_classifiers)]
 
         emb = self.visual_bert(
             input_ids=text_ids,
             attention_mask=text_mask,
-            visual_embeds=img_feature
+            visual_embeds=img_feature,
+            visual_attention_mask=visual_mask
         )[1]
         return self.classifier(emb).squeeze()
 
