@@ -6,14 +6,14 @@ from process_data import load_pickle
 
 # args
 args = argparse.ArgumentParser(description='PyTorch Template')
-args.add_argument('-s', '--save_dirs', nargs='+', default=[],
-                    help='a list of save_dir of submission file to ensemble')
-save_dirs = args.parse_args().save_dirs
+args.add_argument('--paths', nargs='+', default=[],
+                    help='a list of submission file to ensemble')
+paths = args.parse_args().paths
 
 # load data
 datas = [
-    load_pickle(f'{save_dir}/sub.pkl')
-    for save_dir in save_dirs
+    load_pickle(path)
+    for path in paths
 ]
 # ensemble
 merge_stats = {}

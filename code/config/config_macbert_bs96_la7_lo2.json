@@ -1,0 +1,53 @@
+{
+    "name": "PetPoc",
+    "seed": 123,
+    "n_gpu": 4,
+    "arch": {
+        "type": "VisualBertFromBertBaseChinese",
+        "args": {
+            "bert_path": "../pretrain_model/model/chinese-macbert-base",
+            "vbert_path": "../pretrain_model/model/visualbert-nlvr2-coco-pre",
+            "attr_path": "../contest_data/testA/train/attr_to_attrvals.json",
+            "num_layer": 7,
+            "num_loop": 2,
+            "n_split": 13
+        }
+    },
+    "data_loader": {
+        "type": "VisualMaskDataLoader",
+        "args": {
+            "raw_data_dir": "../contest_data/train",
+            "tokenizer_path": "../pretrain_model/tokenizer/chinese-macbert-base",
+            "mask_attr": true,
+            "mask_global": true,
+            "length": 1000,
+            "run_jieba": true,
+            "batch_size": 32,
+            "shuffle": true,
+            "validation_split": 0,
+            "num_workers": 1,
+            "fold_idx": 0
+        }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args": {
+            "lr": 5e-5,
+            "weight_decay": 1e-07
+        }
+    },
+    "loss": "binary_loss",
+    "metrics": [
+        "attr_acc",
+        "global_acc"
+    ],
+    "trainer": {
+        "epochs": 1,
+        "save_dir": "../best_model/macbert-layer7",
+        "save_period": 1,
+        "verbosity": 2,
+        "monitor": "min loss",
+        "early_stop": 10,
+        "tensorboard": false
+    }
+}

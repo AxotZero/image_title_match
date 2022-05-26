@@ -48,7 +48,7 @@ class Trainer(BaseTrainer):
         # val_log = self._valid_epoch(epoch)
         self.model.train()
         self.train_metrics.reset()
-        with tqdm(total=self.len_epoch, ncols=80) as pbar:
+        with tqdm(total=self.len_epoch, ncols=70) as pbar:
             for batch_idx, (data, target) in enumerate(self.data_loader):
                 
                 try:
@@ -79,7 +79,7 @@ class Trainer(BaseTrainer):
                         print(e)
                         raise
                 pbar.set_description(
-                    f"Train Epoch: {epoch} Loss: {loss.item():.6f}"
+                    f"Epoch: {epoch} Loss: {loss.item():.5f}"
                 )
                 pbar.update()
 

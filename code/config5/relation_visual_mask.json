@@ -5,7 +5,7 @@
     "arch": {
         "type": "VisualBertFromBertBaseChinese",
         "args": {
-            "bert_path": "../pretrain_model/model/bert-base-chinese",
+            "bert_path": "../pretrain_model/model/chinese-macbert-base",
             "vbert_path": "../pretrain_model/model/visualbert-nlvr2-coco-pre",
             "attr_path": "../contest_data/testA/train/attr_to_attrvals.json",
             "num_layer": 7,
@@ -14,15 +14,15 @@
         }
     },
     "data_loader": {
-        "type": "VisualMaskDataLoader",
+        "type": "RelationVisualMaskDataLoader",
         "args": {
             "raw_data_dir": "../contest_data/train",
-            "tokenizer_path": "../pretrain_model/tokenizer/bert-base-chinese",
+            "tokenizer_path": "../pretrain_model/model/chinese-macbert-base",
             "mask_attr": true,
             "mask_global": true,
             "length": 1000,
             "run_jieba": true,
-            "batch_size": 32,
+            "batch_size": 64,
             "shuffle": true,
             "validation_split": 0,
             "num_workers": 1,
@@ -43,7 +43,7 @@
     ],
     "trainer": {
         "epochs": 1,
-        "save_dir": "../save_dir/visual_rep_all//fold0",
+        "save_dir": "../best_model/relation_visual_mask",
         "save_period": 1,
         "verbosity": 2,
         "monitor": "min loss",

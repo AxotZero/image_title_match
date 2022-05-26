@@ -26,8 +26,8 @@ from ranger import Ranger
 # os.environ['TOKENIZERS_PARALLELISM'] = "false"
 
 def set_seed(seed):
-    torch.manual_seed(SEED)
-    np.random.seed(SEED)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ['TOKENIZERS_PARALLELISM'] = "false"
@@ -57,6 +57,11 @@ def main(config):
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     # optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
     optimizer = Ranger(model.parameters(), **config['optimizer']['args'])
+    # optimizer = Ranger([
+    #     {'params': model.img_encoder.parameters(), 'lr': 5e-4},
+    #     {'params': model.classifier.parameters(), 'lr': 5e-4},
+    #     {'params': model.visual_bert.parameters()},
+    # ], **config['optimizer']['args'])
     lr_scheduler = None
 
     trainer = Trainer(model, criterion, metrics, optimizer,
@@ -97,6 +102,10 @@ if __name__ == '__main__':
                    target='arch;args;bert_path'),
         CustomArgs(['--vbert_path'], type=str,
                    target='arch;args;vbert_path'),
+        CustomArgs(['--attr_path'], type=str,
+                   target='arch;args;attr_path'),
+        CustomArgs(['--freeze_bert'], type=int,
+                   target='arch;args;freeze_bert'),
         CustomArgs(['--tokenizer_path'], type=str,
                    target='data_loader;args;tokenizer_path'),
         CustomArgs(['--raw_data_dir'], type=str,

@@ -1,10 +1,10 @@
 
 device=2,1
-epochs=12
-batch_size=64
+epochs=10
+batch_size=32
 raw_data_dir=../contest_data/testA/train
 pretrain_dir=../pretrain_model
-length=1000
+length=-1
 
 # bert_path=$pretrain_dir/model/bert-base-chinese
 # vbert_path=$pretrain_dir/model/visualbert-nlvr2-coco-pre
@@ -21,7 +21,7 @@ tokenizer_path=bert-base-chinese
 # save_dir='../data/model_data/visual_mask_all_layer7'
 
 
-for config_path in  'config/no_visual_proj_nsplit12_drop_no_attr.json';
+for config_path in 'config/all_in_one.json';
 do  
     echo '=== run' $config_path '==='
     # train model
@@ -29,7 +29,6 @@ do
         -c=$config_path \
         -d=$device \
         --bs=$batch_size \
-        --data_length=$length \
         --epochs=$epochs \
         --raw_data_dir=$raw_data_dir \
         --data_length=$length \

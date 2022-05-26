@@ -15,10 +15,20 @@ import model.model as module_arch
 from parse_config import ConfigParser
 from utils import to_device
 
-from constant import THRESHOLD
+from constant import THRESHOLD, RELATION_VISUAL_MASK
 from process_data import (load_yaml, load_tokenizer, load_raw_data, 
                           save_pickle, load_pickle, load_json,
                           load_attr)
+
+
+def run_stat(sub):
+    stat = {}
+    for d in sub:
+        for k, v in d['match'].items():
+            if k not in stat:
+                stat[k] = {0:0, 1:0}
+            stat[k][v>0.5] += 1
+    return stat
 
 
 def preprocess_test_data(data_path, attr_config):
@@ -26,47 +36,190 @@ def preprocess_test_data(data_path, attr_config):
     attrval_attr_map = attr_config['attrval_attr_map']
     attrvals = attr_config['attrvals']
     attrval_replace_map = attr_config['attrval_replace_map']
+    attrval_id_map = attr_config['attrval_id_map']
 
     data = load_raw_data(data_path)
     for d in data:
-        d['query_map'] = {q: attr_id_map[q] for q in d['query'] if q != '图文'}
-
         # replace title
         for attrval, replace_val in attrval_replace_map.items():
             if attrval in d['title']:
                 d['title'] = d['title'].replace(attrval, replace_val)
 
-        # add key_attr
-        d['key_attr'] = {}
+        query_map = {}
+        for q in d['query']:
+            if q == '图文':
+                continue
+            
+            has_attr = False
+            for attrval in attrval_id_map[q].keys():
+                if attrval in d['title']:
+                    has_attr = True
+                    query_map[q] = attrval
+                    
+            if not has_attr:
+                raise ValueError
+        d['query_map'] = query_map
+
+
+        key_attr = {}
         for val in attrvals:
             if val in d['title']:
-                d['key_attr'][attrval_attr_map[val]] = val
+                key_attr[attrval_attr_map[val]] = val
+        
+        if ('裤门襟' in key_attr) and ('闭合方式' in key_attr):
+            if '裤型' in key_attr or '裤长' in key_attr:
+                key_attr.pop('闭合方式')
+            elif '鞋帮高度' in key_attr:
+                key_attr.pop('裤门襟')
+            # else:
+            #     key_attr.pop('闭合方式')
+            #     key_attr.pop('裤门襟')
+
+        d['key_attr'] = key_attr
+
     return data
 
 
-if __name__ == '__main__':
-    # define args
+def get_batch_data(datas, attr_config, batch_size=64):
+    texts = []
+    img_features = []
+    visual_masks = []
+
+    for i, data in enumerate(datas):
+        feature = data['feature']
+
+        # create global data
+        # create global visual mask
+        global_visual_mask = [0] * 13
+        for attr in data['key_attr'].keys():
+            global_visual_mask[attr_config['attr_id_map'][attr]] = 1
+        global_visual_mask[-1] = 1
+
+        texts.append(data['title'])
+        img_features.append(feature)
+        visual_masks.append(global_visual_mask)
+
+        # create attr data
+        for attr, attrval in data['query_map'].items():
+            # attr visual mask
+            visual_mask = [0] * 13
+            visual_mask[attr_config['attr_id_map'][attr]] = 1
+            
+            texts.append(attrval)
+            img_features.append(feature)
+            visual_masks.append(visual_mask)
+        
+        if (i+1) % batch_size == 0 or (i == len(datas)-1):
+            yield (texts, img_features, visual_masks)
+
+            texts = []
+            img_features = []
+            visual_masks = []
+
+
+def relation_visual_mask_data(datas, attr_config, batch_size=64):
+    texts = []
+    img_features = []
+    visual_masks = []
+
+    for i, data in enumerate(datas):
+        feature = data['feature']
+
+        # create global data
+        # create global visual mask
+
+        global_visual_mask = np.array([0] * 12)
+        for attr in data['key_attr'].keys():
+            global_visual_mask = global_visual_mask | RELATION_VISUAL_MASK[attr_config['attr_id_map'][attr]]
+        global_visual_mask = list(global_visual_mask)
+        global_visual_mask.append(1)
+
+        texts.append(data['title'])
+        img_features.append(feature)
+        visual_masks.append(global_visual_mask)
+
+        # create attr data
+        for attr, attrval in data['query_map'].items():
+            # attr visual mask
+            visual_mask = list(RELATION_VISUAL_MASK[attr_config['attr_id_map'][attr]])
+            visual_mask.append(0)
+            
+            texts.append(attrval)
+            img_features.append(feature)
+            visual_masks.append(visual_mask)
+        
+        if (i+1) % batch_size == 0 or (i == len(datas)-1):
+            yield (texts, img_features, visual_masks)
+
+            texts = []
+            img_features = []
+            visual_masks = []
+
+
+
+def all_in_one_batch_data(datas, attr_config, batch_size=64):
+    texts = []
+    img_features = []
+    visual_masks = []
+    query = []
+
+    for i, data in enumerate(datas):
+        feature = data['feature']
+
+        # create global data
+        # create global visual mask
+        global_visual_mask = [0] * 13
+        for attr in data['key_attr'].keys():
+            global_visual_mask[attr_config['attr_id_map'][attr]] = 1
+        global_visual_mask[-1] = 1
+
+        texts.append(data['title'])
+        img_features.append(feature)
+        visual_masks.append(global_visual_mask)
+        query.append(data['query'])
+        
+        
+        if (i+1) % batch_size == 0 or (i == len(datas)-1):
+            yield (texts, img_features, visual_masks, query)
+
+            texts = []
+            img_features = []
+            visual_masks = []
+            query = []
+
+
+def parse_args():
     args = argparse.ArgumentParser(description='PyTorch Template')
     args.add_argument('--resume', default=None, type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('--output_dir', type=str,
-                      help='output_dir')
+    args.add_argument('--output_path', type=str,
+                      help='output_path')
     args.add_argument('--test_data_path', type=str,
                       help='test_data_path')
     args.add_argument('--train_data_dir', type=str,
                       help='train_data_dir')
     args.add_argument('--text_model_name', type=str, default='bert-base-chinese',
                       help='text_model_name')
+    args.add_argument('--bert_path', type=str, default='../data/contest_data/attr_to_attrvals.json',
+                      help='path to attr_to_attrvals.json')
+    args.add_argument('--vbert_path', type=str, default='../data/contest_data/attr_to_attrvals.json',
+                      help='path to attr_to_attrvals.json')
     args.add_argument('--attr_path', type=str, default='../data/contest_data/attr_to_attrvals.json',
                       help='path to attr_to_attrvals.json')
-    args.add_argument('--mask_attr', action='store_true',
-                      help='create visual_mask for attr')
-    args.add_argument('--mask_global', action='store_true',
-                      help='create visual_mask for global')
+    args.add_argument('--all_in_one', action='store_true',
+                      help='all_in_one')
+    args.add_argument('--relation_mask', action='store_true',
+                      help='all_in_one')
 
     args = args.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    # define args
+    args = parse_args()
 
     # set_device
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
@@ -89,13 +242,9 @@ if __name__ == '__main__':
 
     # build model 
     print('build model')
-    pretrain_dir='/home/mw/input/pretrain_model_5238/pretrain_model'
-    bert_path=f'{pretrain_dir}/model/bert-base-chinese'
-    vbert_path=f'{pretrain_dir}/model/visualbert-nlvr2-coco-pre'
-    attr_path = f'/home/mw/input/track1_contest_4362/train/train/attr_to_attrvals.json'
-    config['arch']['args']['bert_path'] = bert_path
-    config['arch']['args']['vbert_path'] = vbert_path
-    config['arch']['args']['attr_path'] = attr_path
+    config['arch']['args']['bert_path'] = args.bert_path
+    config['arch']['args']['vbert_path'] = args.vbert_path
+    config['arch']['args']['attr_path'] = args.attr_path
 
     model = config.init_obj('arch', module_arch)
     model.load_state_dict(checkpoint['state_dict'])
@@ -104,55 +253,63 @@ if __name__ == '__main__':
 
     # run testing
     print('run testing')
-    test_output = []
+    preds = []
     with torch.no_grad():
-        for i, data in enumerate(test_data):
-            title_ids = torch.tensor(
-                tokenizer.encode(data['title'])).to(device)
-            img_feature = torch.tensor(data['feature']).to(device)
+        if args.all_in_one:
+            pbar = tqdm(enumerate(all_in_one_batch_data(test_data, attr_config)))
+            for i, (texts, features, visual_masks, query) in pbar:
+                outs = tokenizer(texts, padding=True)
+                texts_ids = outs['input_ids']
+                text_masks = outs['attention_mask']
 
-            title_ids = title_ids.long().unsqueeze(0)
-            img_feature = img_feature.float().unsqueeze(0)
-            
-            if args.mask_global:
-                visual_mask = [0] * 13
-                for attr in data['key_attr'].keys():
-                    visual_mask[attr_config['attr_id_map'][attr]] = 1
-                visual_mask[-1] = 1
-                visual_mask = torch.tensor(visual_mask).bool().unsqueeze(0).to(device)
-                global_match = model.predict((title_ids, img_feature, visual_mask))
-            else:
-                global_match = model.predict((title_ids, img_feature))
+                texts_ids = torch.tensor(texts_ids).to(device).long()
+                features = torch.tensor(features).to(device).float()
+                text_masks = torch.tensor(text_masks).to(device).bool()
+                visual_masks = torch.tensor(visual_masks).to(device).bool()
 
-            match = {'图文': float(global_match.squeeze().cpu().detach())}
-            for q, idx in data['query_map'].items():
-                have_attrval = False
-                for attrval, target in attrval_id_map[q].items():
-                    if attrval in data['title']:
-                        title_ids = torch.tensor(tokenizer.encode(
-                            attrval)).to(device).unsqueeze(0)
-                        have_attrval = True
-
-                        # attr visual mask
-                        if args.mask_attr:
-                            visual_mask = [0] * 13
-                            visual_mask[attr_config['attr_id_map'][q]] = 1
-                            visual_mask = torch.tensor(visual_mask).bool().unsqueeze(0).to(device)
-                            # predict
-                            pred = model.predict((title_ids, img_feature, visual_mask))
+                # apply query
+                pred = model((texts_ids, features, text_masks, visual_masks))
+                pred = pred.cpu().detach().numpy().tolist()
+                for qs, p in zip(query, pred):
+                    for q in qs:
+                        if q == '图文':
+                            preds.append(p[-1])
                         else:
-                            pred = model.predict((title_ids, img_feature))
+                            preds.append(p[attr_config['attr_id_map'][q]])
+        else:
+            if args.relation_mask:
+                pbar = tqdm(enumerate(relation_visual_mask_data(test_data, attr_config)))
+            else:
+                pbar = tqdm(enumerate(get_batch_data(test_data, attr_config)))
+            for i, (texts, features, visual_masks) in pbar:
+                outs = tokenizer(texts, padding=True)
+                texts_ids = outs['input_ids']
+                text_masks = outs['attention_mask']
 
-                        match[q] = float(pred.squeeze().cpu().detach())
-                if not have_attrval:
-                    match[q] = 0
-                # match[q] = float(attr_match[:, idx].squeeze().cpu().detach())
+                texts_ids = torch.tensor(texts_ids).to(device).long()
+                features = torch.tensor(features).to(device).float()
+                text_masks = torch.tensor(text_masks).to(device).bool()
+                visual_masks = torch.tensor(visual_masks).to(device).bool()
 
-            output = {
-                'img_name': data['img_name'],
-                'match': match
-            }
-            test_output.append(output)
+                pred = model((texts_ids, features, text_masks, visual_masks))
+                pred = list(pred.view(-1).cpu().detach().numpy())
+                preds += pred
 
-    save_pickle(test_output, f'{args.output_dir}/sub.pkl')
 
+    # map to sub
+    i = 0
+    test_output = []
+    for d in test_data:
+        
+        match = {}
+        for q in d['query']:
+            match[q] = preds[i]
+            i += 1
+
+        test_output.append({
+            'img_name': d['img_name'],
+            'match': match
+        })
+    save_pickle(test_output, args.output_path)
+
+    print(run_stat(test_output))

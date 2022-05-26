@@ -125,9 +125,10 @@ class BaseTrainer:
         }
         if save_best:
             self.best_epoch = epoch
-            best_path = str(self.checkpoint_dir / 'best_model.pth')
+            # if epoch >= 8:
+            best_path = str(self.checkpoint_dir / f'best_model.pth')
             torch.save(state, best_path)
-            self.logger.info("Improved! Saving current best: best_model.pth ...")
+            # self.logger.info("Improved! Saving current best: best_model.pth ...")
         else:
             self.logger.info(f"Performance is lower than epoch: {self.best_epoch}")
 

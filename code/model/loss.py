@@ -3,6 +3,40 @@ import torch.nn.functional as F
 import torch
 
 
+def weighted_binary_cross_entropy(output, target, weights=None):
+    assert len(weights) == 2
+    
+    loss = weights[1] * (target * torch.log(output)) + \
+            weights[0] * ((1 - target) * torch.log(1 - output))
+
+    return torch.neg(torch.mean(loss))
+
+
+def all_in_one_loss(output, target):
+    matches, loss_masks, loss_weight = target
+
+    # compute attr loss
+    attr_outs = output[:, :12].reshape(-1)
+    attr_match = matches[:, :12].reshape(-1)
+    attr_loss_mask = loss_masks[:, :12].reshape(-1)
+    attr_outs = attr_outs[attr_loss_mask]
+    attr_match = attr_match[attr_loss_mask]
+    attr_loss = weighted_binary_cross_entropy(attr_outs, attr_match, loss_weight)
+    
+    # compute global loss
+    global_loss = bce_loss(output[:, -1].squeeze(), matches[:, -1])
+    return 0.5 * attr_loss + 0.5 * global_loss
+
+
+def binary_loss_unbalance(output, target):
+
+    global_mask, attr_mask, match = target
+
+    # global_loss = bce_loss(output[global_mask], match[global_mask])
+    # attr_loss = bce_loss(output[attr_mask], match[attr_mask])
+    return bce_loss(output, match)
+
+
 def binary_loss(output, target):
 
     global_mask, attr_mask, match = target

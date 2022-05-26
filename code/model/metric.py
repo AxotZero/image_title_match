@@ -8,10 +8,27 @@ import torch.nn.functional as F
 from constant import THRESHOLD
 
 
+def all_in_one_global_acc(output, target):
+    matches, loss_masks, loss_weight = target
+    matches = matches[:, -1]
+    output = output[:, -1]
+    return binary_acc(output, matches)
+
+
+def all_in_one_attr_acc(output, target):
+    matches, loss_masks, loss_weight = target
+    attr_outs = output[:, :12].reshape(-1)
+    attr_match = matches[:, :12].reshape(-1)
+    attr_loss_mask = loss_masks[:, :12].reshape(-1)
+    attr_outs = attr_outs[attr_loss_mask]
+    attr_match = attr_match[attr_loss_mask]
+    return binary_acc(attr_outs, attr_match) 
+
+
 def binary_acc(output, target):
     if not len(output) and not len(target):
         return -1
-
+    # bp()
     return torch.mean((target == (output > THRESHOLD).float()).float())
 
 
